@@ -167,6 +167,11 @@ button{cursor:pointer}
       <input id="nameEdit" maxlength="16">
     </div>
     <div class="field">
+      <label>アイコンの色</label>
+      <div class="colors" id="colorsEdit"></div>
+      <small>家族の画面では、あなたのアイコンがこの色になります。</small>
+    </div>
+    <div class="field">
       <label for="roomEdit">トークの名前（この端末での表示）</label>
       <input id="roomEdit" maxlength="20">
     </div>
@@ -221,7 +226,7 @@ const COLORS = ["#e0584b","#e8963a","#2f9a63","#2b8ac6","#6a5acd","#c4508f","#5b
 // 閉じていても届く通知の中継先（Cloudflare Workerの URL）。空のままなら、開いている間だけの通知になります。
 // 例）const PUSH_URL = "https://ouchi-push.yourname.workers.dev";
 const PUSH_URL = "https://ouchi-push.westrivergenta.workers.dev";
-const APP_VERSION = "1.3（既読・閉じても届く通知）";
+const APP_VERSION = "1.4（アイコンの色を変更できるように）";
 const STAMPS = ["👍","😊","😂","🙏","❤️","👌","🎉","😢","🍚","🏠","🚃","💤","⭕","❌","OK"];
 
 /* ===== 小道具 ===== */
@@ -279,16 +284,18 @@ function saveMsgs(){ if (msgs.length > MAX_LOCAL) msgs = msgs.slice(-MAX_LOCAL);
 
 /* ===== はじめての設定 ===== */
 let pickColor = COLORS[Math.floor(Math.random()*COLORS.length)];
-function drawColors(){
-  const box = $("colors"); box.innerHTML = "";
+// 色の選択ボタン（はじめての設定と、設定シートの両方で使う）
+function drawColors(boxId = "colors"){
+  const box = $(boxId); box.innerHTML = "";
   COLORS.forEach(c => {
     const b = document.createElement("button");
     b.type = "button"; b.style.background = c; b.setAttribute("aria-label","色 "+c);
     b.setAttribute("aria-pressed", String(c === pickColor));
-    b.onclick = () => { pickColor = c; drawColors(); };
+    b.onclick = () => { pickColor = c; drawColors(boxId); };
     box.appendChild(b);
   });
 }
+const isColor = c => typeof c === "string" && /^#[0-9a-f]{6}$/i.test(c);
 function readInviteFromHash(){
   const h = location.hash.slice(1);
   if (!h.startsWith("k=")) return null;
@@ -328,6 +335,13 @@ function render(){
     e.innerHTML = "まだメッセージはありません。<br>家族にも同じ合言葉を入れてもらうか、右上の設定から招待リンクを送りましょう。";
     log.appendChild(e); return;
   }
+  // 家族それぞれの「今の色」：最新のメッセージか、既読のお知らせに入っている色のうち新しいほう
+  const colorNow = {};
+  for (const m of msgs) if (!m.mine && isColor(m.color)) colorNow[m.dev] = { c:m.color, t:m.ts };
+  for (const [pk, r] of Object.entries(reads)){
+    const k = pk.slice(0,8);
+    if (isColor(r.c) && (r.at || 0) >= ((colorNow[k] && colorNow[k].t) || 0)) colorNow[k] = { c:r.c, t:r.at };
+  }
   let lastDay = "", lastWho = "";
   for (const m of msgs){
     const d = fmtDay(m.ts);
@@ -335,7 +349,7 @@ function render(){
     const row = document.createElement("div"); row.className = "row" + (m.mine ? " mine" : "");
     const whoKey = m.dev + m.name;
     if (!m.mine){
-      const av = document.createElement("div"); av.className="av"; av.style.background = m.color || "#5b6472";
+      const av = document.createElement("div"); av.className="av"; av.style.background = (colorNow[m.dev] && colorNow[m.dev].c) || (isColor(m.color) ? m.color : "#5b6472");
       av.textContent = [...(m.name||"?")][0]; av.style.visibility = whoKey===lastWho ? "hidden" : "visible";
       row.appendChild(av);
     }
@@ -392,7 +406,10 @@ async function handleEvent(ev){
     seen.add(ev.id);
     if (mine) return;
     const u = Number(p.u) || 0, cur = reads[ev.pubkey];
-    if (!cur || cur.u < u){ reads[ev.pubkey] = { n:String(p.n||"?").slice(0,16), u }; store.set("ot.reads", reads); render(); }
+    if (!cur || cur.u < u || ev.created_at > (cur.at || 0)){
+      reads[ev.pubkey] = { n:String(p.n||"?").slice(0,16), u: Math.max(u, cur ? cur.u : 0), c: isColor(p.c) ? p.c : (cur && cur.c), at: Math.max(ev.created_at, cur && cur.at || 0) };
+      store.set("ot.reads", reads); render();
+    }
     return;
   }
   const m = { id:p.id || ev.id, ts:ev.created_at, name:String(p.n||"?").slice(0,16), color:p.c, type:p.t, body:String(p.b||""), dev:ev.pubkey.slice(0,8), mine, ok: mine ? 1 : undefined };
@@ -416,19 +433,20 @@ function scheduleRead(){
   clearTimeout(scheduleRead.t);
   scheduleRead.t = setTimeout(sendRead, 1500);
 }
-async function sendRead(){
-  if (document.hidden || !pool || !fam) return;
-  let upTo = 0; for (const m of msgs) if (!m.mine && m.ts > upTo) upTo = m.ts;
-  if (!upTo || upTo <= store.get("ot.readSent", 0)) return;
+// force=true：色や呼び名を変えたときに、既読位置が進んでいなくても家族に知らせる
+async function sendRead(force = false){
+  if (!pool || !fam || (document.hidden && !force)) return;
+  let upTo = store.get("ot.readSent", 0); for (const m of msgs) if (!m.mine && m.ts > upTo) upTo = m.ts;
+  if (!force && (!upTo || upTo <= store.get("ot.readSent", 0))) return;
   try {
     const ev = NT.finalizeEvent({
       kind: KIND, created_at: Math.floor(Date.now()/1000),
       tags: [["d", "read"], ["t", fam.tag]],
-      content: await seal(fam.key, { app:APP, id:"read", n:me.name, t:"read", u:upTo })
+      content: await seal(fam.key, { app:APP, id:"read", n:me.name, c:me.color, t:"read", u:upTo })
     }, unhex(devSk));
     seen.add(ev.id);
     const r = await Promise.allSettled(pool.publish(RELAYS, ev));
-    if (r.some(x => x.status === "fulfilled")) store.set("ot.readSent", upTo);
+    if (r.some(x => x.status === "fulfilled") && upTo) store.set("ot.readSent", upTo);
   } catch {}
 }
 const devPk = () => NT.getPublicKey(unhex(devSk));
@@ -657,6 +675,7 @@ $("photoIn").onchange = async () => {
 // 設定シート
 $("menuBtn").onclick = () => {
   $("nameEdit").value = me.name; $("roomEdit").value = me.room || "家族のトーク";
+  pickColor = me.color; drawColors("colorsEdit");
   $("resetOk").hidden = true;
   $("notifyBtn").textContent = ("Notification" in window && Notification.permission === "granted") ? "通知はオンです" : "通知をオンにする";
   drawPushState();
@@ -667,9 +686,13 @@ $("pushBtn").onclick = enablePush;
 $("pushOff").onclick = async () => { await disablePush(); toast("この端末の通知をやめました"); };
 $("sheet").addEventListener("click", e => { if (e.target === $("sheet")) $("sheetClose").click(); });
 $("sheetClose").onclick = () => {
-  const n = $("nameEdit").value.trim(); if (n) me.name = n;
+  const n = $("nameEdit").value.trim();
+  const changed = (n && n !== me.name) || pickColor !== me.color;
+  if (n) me.name = n;
+  if (isColor(pickColor)) me.color = pickColor;
   me.room = $("roomEdit").value.trim() || "家族のトーク";
   store.set("ot.me", me); $("title").textContent = me.room; $("sheet").hidden = true;
+  if (changed){ sendRead(true); toast("保存しました。家族の画面にも反映されます"); }
 };
 $("copyInvite").onclick = async () => {
   const link = location.origin + location.pathname + "#k=" + encodeURIComponent(me.pass);
