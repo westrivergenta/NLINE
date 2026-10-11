@@ -1,0 +1,685 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,interactive-widget=resizes-content">
+<title>おうちトーク</title>
+<meta name="description" content="アカウント不要・無料の家族専用チャット">
+<meta name="theme-color" content="#3a47a3">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="おうちトーク">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@400;500;700&display=swap">
+<style>
+/* 1画面のトーク画面。上部バー＋スクロールする吹き出し＋下部入力欄 */
+:root{
+  --bg:#e9edf3; --surface:#ffffff; --ink:#1f2433; --muted:#6b7385;
+  --line:#d5dbe6; --accent:#3a47a3; --accent-ink:#ffffff; --mine:#3a47a3;
+  --mine-ink:#ffffff; --theirs:#ffffff; --theirs-ink:#1f2433; --ok:#2f8a5b; --warn:#c0562f;
+  --font:"M PLUS Rounded 1c","Hiragino Maru Gothic ProN","Hiragino Sans","Noto Sans JP",system-ui,sans-serif;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#141824; --surface:#1e2333; --ink:#e7eaf2; --muted:#9aa2b5; --line:#2e3548;
+  --accent:#8c97ef; --accent-ink:#111528; --mine:#4552b8; --mine-ink:#ffffff;
+  --theirs:#262c3f; --theirs-ink:#e7eaf2; --ok:#5fc48e; --warn:#ef8a62; color-scheme:dark}}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--ink);font-family:var(--font);font-size:16px;-webkit-text-size-adjust:100%}
+button,input,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+[hidden]{display:none!important}
+
+/* ---- はじめての設定 ---- */
+.setup{min-height:100%;display:grid;place-items:center;padding:24px 16px calc(24px + env(safe-area-inset-bottom,0px))}
+.card{width:100%;max-width:420px;background:var(--surface);border:1px solid var(--line);border-radius:20px;padding:28px 22px;display:grid;gap:18px}
+.brand{display:flex;align-items:center;gap:12px}
+.brand svg{width:48px;height:48px;flex:none}
+.brand h1{margin:0;font-size:1.5rem;font-weight:700;letter-spacing:.02em}
+.brand p{margin:2px 0 0;color:var(--muted);font-size:.85rem}
+.field{display:grid;gap:6px}
+.field label{font-size:.85rem;font-weight:500}
+.field small{color:var(--muted);font-size:.78rem;line-height:1.5}
+.field input{width:100%;padding:12px 14px;border:1px solid var(--line);border-radius:12px;background:var(--bg);font-size:1rem}
+.colors{display:flex;gap:10px;flex-wrap:wrap}
+.colors button{width:36px;height:36px;border-radius:50%;border:3px solid transparent;padding:0}
+.colors button[aria-pressed="true"]{border-color:var(--ink)}
+.primary{background:var(--accent);color:var(--accent-ink);border:0;border-radius:12px;padding:13px;font-weight:700;font-size:1rem}
+.primary:disabled{opacity:.5}
+.ghost{background:transparent;border:1px solid var(--line);border-radius:10px;padding:9px 12px;font-size:.9rem}
+.err{color:var(--warn);font-size:.85rem;margin:0}
+
+/* ---- トーク画面 ---- */
+.app{height:100%;display:flex;flex-direction:column}
+.bar{display:flex;align-items:center;gap:10px;padding:10px 12px;padding-top:calc(10px + env(safe-area-inset-top,0px));background:var(--surface);border-bottom:1px solid var(--line)}
+.bar h2{margin:0;font-size:1.05rem;font-weight:700;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.status{display:flex;align-items:center;gap:6px;font-size:.75rem;color:var(--muted);white-space:nowrap}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--warn)}
+.dot.on{background:var(--ok)}
+.iconbtn{background:transparent;border:0;width:40px;height:40px;border-radius:10px;display:grid;place-items:center;flex:none}
+.iconbtn svg{width:22px;height:22px}
+.log{flex:1;overflow-y:auto;padding:14px 12px 8px;display:flex;flex-direction:column;gap:10px;overscroll-behavior:contain}
+.day{align-self:center;font-size:.72rem;color:var(--muted);background:var(--surface);border:1px solid var(--line);border-radius:99px;padding:3px 10px;margin:6px 0}
+.row{display:flex;gap:8px;align-items:flex-end;max-width:100%}
+.row.mine{flex-direction:row-reverse}
+.av{width:32px;height:32px;border-radius:50%;display:grid;place-items:center;color:#fff;font-weight:700;font-size:.85rem;flex:none}
+.stack{display:grid;gap:3px;min-width:0;max-width:min(78%,520px)}
+.row.mine .stack{justify-items:end}
+.who{font-size:.72rem;color:var(--muted);padding-left:4px}
+.bub{padding:9px 13px;border-radius:18px;line-height:1.55;white-space:pre-wrap;overflow-wrap:anywhere;background:var(--theirs);color:var(--theirs-ink);border:1px solid var(--line)}
+.row.mine .bub{background:var(--mine);color:var(--mine-ink);border-color:transparent;border-bottom-right-radius:6px}
+.row:not(.mine) .bub{border-bottom-left-radius:6px}
+.bub.stamp{background:transparent!important;border:0;font-size:3rem;padding:0;line-height:1.1}
+.bub.img{padding:4px;background:var(--surface)!important}
+.bub.img img{display:block;border-radius:14px;max-width:100%;max-height:320px}
+.bub a{color:inherit}
+.meta{font-size:.68rem;color:var(--muted);font-variant-numeric:tabular-nums;display:flex;gap:6px}
+.meta .fail{color:var(--warn)}
+.empty{margin:auto;text-align:center;color:var(--muted);font-size:.9rem;line-height:1.7;max-width:280px}
+
+.stamps{display:flex;gap:6px;overflow-x:auto;padding:8px 12px;background:var(--surface);border-top:1px solid var(--line)}
+.stamps button{font-size:1.7rem;background:var(--bg);border:0;border-radius:12px;padding:4px 10px;flex:none}
+.compose{display:flex;gap:6px;align-items:flex-end;padding:8px 8px;padding-bottom:calc(8px + env(safe-area-inset-bottom,0px));background:var(--surface);border-top:1px solid var(--line)}
+.compose textarea{flex:1;min-width:0;resize:none;border:1px solid var(--line);background:var(--bg);border-radius:20px;padding:9px 14px;max-height:120px;line-height:1.4;font-size:1rem}
+.send{background:var(--accent);color:var(--accent-ink);border-radius:50%}
+.send:disabled{opacity:.4}
+
+/* ---- 設定シート ---- */
+.sheet{position:fixed;inset:0;background:rgba(10,12,20,.45);display:flex;align-items:flex-end;justify-content:center;z-index:10}
+.sheet .card{border-radius:20px 20px 0 0;max-width:520px;padding-bottom:calc(22px + env(safe-area-inset-bottom,0px));max-height:90%;overflow-y:auto}
+.sheet h3{margin:0;font-size:1.1rem}
+.kv{display:flex;gap:8px;flex-wrap:wrap}
+.danger{color:var(--warn);border-color:var(--warn)}
+.toast{position:fixed;left:50%;bottom:calc(90px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:9px 16px;border-radius:99px;font-size:.85rem;z-index:20;max-width:calc(100% - 32px)}
+@media (prefers-reduced-motion:no-preference){.row{animation:pop .18s ease-out}@keyframes pop{from{transform:translateY(6px);opacity:.4}}}
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="logo" viewBox="0 0 48 48"><rect width="48" height="48" rx="13" fill="#3a47a3"/><path d="M11 23.5 24 13l13 10.5V35a2 2 0 0 1-2 2H13a2 2 0 0 1-2-2z" fill="#fff"/><path d="M18 26.5h12M18 31h8" stroke="#3a47a3" stroke-width="2.6" stroke-linecap="round"/></symbol>
+</svg>
+
+<!-- はじめての設定 -->
+<section class="setup" id="setup" hidden>
+  <form class="card" id="setupForm" autocomplete="off">
+    <div class="brand">
+      <svg><use href="#logo"/></svg>
+      <div><h1>おうちトーク</h1><p>登録なし・無料の家族チャット</p></div>
+    </div>
+    <div class="field">
+      <label for="nameIn">あなたの呼び名</label>
+      <input id="nameIn" maxlength="16" placeholder="例：おかあさん" required>
+    </div>
+    <div class="field">
+      <label>アイコンの色</label>
+      <div class="colors" id="colors"></div>
+    </div>
+    <div class="field">
+      <label for="keyIn">家族の合言葉</label>
+      <input id="keyIn" minlength="8" placeholder="8文字以上。家族全員で同じものを入力" required>
+      <small>同じ合言葉を入れた人どうしだけで会話できます。メッセージはこの合言葉で暗号化されるので、他人には読めません。推測されにくい長めの言葉にしてください。</small>
+    </div>
+    <p class="err" id="setupErr" hidden></p>
+    <button class="primary" id="setupBtn">はじめる</button>
+  </form>
+</section>
+
+<!-- トーク画面 -->
+<section class="app" id="app" hidden>
+  <header class="bar">
+    <svg width="30" height="30" aria-hidden="true"><use href="#logo"/></svg>
+    <h2 id="title">家族のトーク</h2>
+    <span class="status" title="中継サーバーへの接続数"><span class="dot" id="dot"></span><span id="statusTx">接続中…</span></span>
+    <button class="iconbtn" id="menuBtn" aria-label="設定">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+    </button>
+  </header>
+  <main class="log" id="log" aria-live="polite"></main>
+  <div class="stamps" id="stamps" hidden></div>
+  <form class="compose" id="compose">
+    <button type="button" class="iconbtn" id="stampBtn" aria-label="スタンプ">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M8.5 14.5a4.5 4.5 0 0 0 7 0"/><circle cx="9" cy="10" r=".6" fill="currentColor"/><circle cx="15" cy="10" r=".6" fill="currentColor"/></svg>
+    </button>
+    <button type="button" class="iconbtn" id="photoBtn" aria-label="写真を送る">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2.5"/><circle cx="9" cy="10" r="1.6"/><path d="m4 17 5-4.5 4 3.5 3-2.5 4 3.5"/></svg>
+    </button>
+    <input type="file" id="photoIn" accept="image/*" hidden>
+    <textarea id="msgIn" rows="1" placeholder="メッセージ" enterkeyhint="send"></textarea>
+    <button class="iconbtn send" id="sendBtn" aria-label="送信" disabled>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h13M13 6l6 6-6 6"/></svg>
+    </button>
+  </form>
+</section>
+
+<!-- 設定シート -->
+<div class="sheet" id="sheet" hidden>
+  <div class="card" role="dialog" aria-labelledby="sheetTitle">
+    <h3 id="sheetTitle">設定</h3>
+    <div class="field">
+      <label for="nameEdit">あなたの呼び名</label>
+      <input id="nameEdit" maxlength="16">
+    </div>
+    <div class="field">
+      <label for="roomEdit">トークの名前（この端末での表示）</label>
+      <input id="roomEdit" maxlength="20">
+    </div>
+    <div class="field">
+      <label>家族を招待する</label>
+      <small>このリンクを開くと合言葉が自動で入ります。リンクを知っている人は会話を読めるので、家族にだけ直接送ってください。</small>
+      <div class="kv"><button class="ghost" id="copyInvite">招待リンクをコピー</button></div>
+    </div>
+    <div class="field" id="pushField" hidden>
+      <label>通知</label>
+      <small id="pushNote"></small>
+      <div class="kv"><button class="ghost" id="pushBtn">通知をオンにする</button><button class="ghost" id="pushOff" hidden>この端末の通知をやめる</button></div>
+    </div>
+    <div class="field" id="notifyField">
+      <label>通知</label>
+      <small>アプリを開いているあいだ、裏に回っているときに新着をお知らせします。</small>
+      <div class="kv"><button class="ghost" id="notifyBtn">通知をオンにする</button></div>
+    </div>
+    <div class="field">
+      <label>この端末から抜ける</label>
+      <small>この端末の名前・合言葉・履歴を消します。家族の端末には影響しません。</small>
+      <div class="kv"><button class="ghost danger" id="resetBtn">リセット</button><button class="ghost danger" id="resetOk" hidden>本当に消す</button></div>
+    </div>
+    <button class="primary" id="sheetClose">保存して閉じる</button>
+  </div>
+</div>
+
+<div class="toast" id="toast" hidden></div>
+
+<script src="https://cdn.jsdelivr.net/npm/nostr-tools@2.7.0/lib/nostr.bundle.js"></script>
+<script>window.NostrTools || document.write('<script src="https://unpkg.com/nostr-tools@2.7.0/lib/nostr.bundle.js"><\/script>')</script>
+<script>
+(() => {
+"use strict";
+
+/* ===== 設定 ===== */
+// 無料で誰でも使える公開中継サーバー（Nostrリレー）。どれか1つが動いていれば届きます。
+const RELAYS = [
+  "wss://relay.damus.io",
+  "wss://nos.lol",
+  "wss://relay.nostr.band",
+  "wss://relay.primal.net",
+  "wss://nostr.mom"
+];
+const KIND = 30078;          // アプリ用データ（SNSのタイムラインには表示されない種類）
+const APP = "ouchi-talk-v1";
+const HISTORY_DAYS = 30;     // 初回に取り寄せる過去の日数
+const MAX_LOCAL = 800;       // 端末に残す件数
+const IMG_MAX_BYTES = 48000; // 写真1枚の上限（中継サーバーの制限に合わせて縮小）
+const COLORS = ["#e0584b","#e8963a","#2f9a63","#2b8ac6","#6a5acd","#c4508f","#5b6472"];
+// 閉じていても届く通知の中継先（Cloudflare Workerの URL）。空のままなら、開いている間だけの通知になります。
+// 例）const PUSH_URL = "https://ouchi-push.yourname.workers.dev";
+const PUSH_URL = "";
+const STAMPS = ["👍","😊","😂","🙏","❤️","👌","🎉","😢","🍚","🏠","🚃","💤","⭕","❌","OK"];
+
+/* ===== 小道具 ===== */
+const $ = id => document.getElementById(id);
+const store = {
+  get(k, d){ try{ const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); }catch{ return d; } },
+  set(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch{} },
+  del(k){ try{ localStorage.removeItem(k); }catch{} }
+};
+const enc = new TextEncoder(), dec = new TextDecoder();
+const hex = b => Array.from(b, x => x.toString(16).padStart(2,"0")).join("");
+const unhex = h => new Uint8Array(h.match(/../g).map(x => parseInt(x,16)));
+const b64 = u8 => { let s=""; for (let i=0;i<u8.length;i+=0x8000) s += String.fromCharCode.apply(null, u8.subarray(i,i+0x8000)); return btoa(s); };
+const unb64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+const rid = () => hex(crypto.getRandomValues(new Uint8Array(12)));
+function toast(t){ const el=$("toast"); el.textContent=t; el.hidden=false; clearTimeout(toast.t); toast.t=setTimeout(()=>el.hidden=true,2400); }
+
+/* ===== 暗号 ===== */
+// 合言葉 → 暗号鍵（AES-GCM）と、会話を見分けるための目印（合言葉そのものは送らない）
+async function deriveFamily(pass){
+  const p = pass.normalize("NFKC").trim();
+  const base = await crypto.subtle.importKey("raw", enc.encode(p), "PBKDF2", false, ["deriveKey","deriveBits"]);
+  const key = await crypto.subtle.deriveKey(
+    {name:"PBKDF2", salt:enc.encode(APP+":key"), iterations:210000, hash:"SHA-256"},
+    base, {name:"AES-GCM", length:256}, false, ["encrypt","decrypt"]);
+  const bits = salt => crypto.subtle.deriveBits(
+    {name:"PBKDF2", salt:enc.encode(APP+salt), iterations:210000, hash:"SHA-256"}, base, 128);
+  const [tagBits, pushBits] = await Promise.all([bits(":room"), bits(":push")]);
+  // tag：中継サーバーで会話を見分ける目印 / push：通知中継で家族を見分ける目印（別の値にしておく）
+  return { key, tag: hex(new Uint8Array(tagBits)), push: hex(new Uint8Array(pushBits)) };
+}
+async function seal(key, obj){
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = new Uint8Array(await crypto.subtle.encrypt({name:"AES-GCM", iv}, key, enc.encode(JSON.stringify(obj))));
+  const out = new Uint8Array(12 + ct.length); out.set(iv); out.set(ct, 12);
+  return b64(out);
+}
+async function open(key, s){
+  const u = unb64(s);
+  const pt = await crypto.subtle.decrypt({name:"AES-GCM", iv:u.subarray(0,12)}, key, u.subarray(12));
+  return JSON.parse(dec.decode(pt));
+}
+
+/* ===== 状態 ===== */
+let me = store.get("ot.me", null);        // {name,color,pass,room}
+let fam = null;                            // {key,tag}
+let msgs = store.get("ot.msgs", []);       // [{id,ts,name,color,type,body,dev,mine,ok}]
+const seen = new Set(msgs.map(m => m.id));
+let devSk = store.get("ot.sk", null);      // 端末ごとの署名鍵（自動生成。アカウントではない）
+let pool = null, sub = null, unread = 0;
+const NT = window.NostrTools;
+
+function saveMsgs(){ if (msgs.length > MAX_LOCAL) msgs = msgs.slice(-MAX_LOCAL); store.set("ot.msgs", msgs); }
+
+/* ===== はじめての設定 ===== */
+let pickColor = COLORS[Math.floor(Math.random()*COLORS.length)];
+function drawColors(){
+  const box = $("colors"); box.innerHTML = "";
+  COLORS.forEach(c => {
+    const b = document.createElement("button");
+    b.type = "button"; b.style.background = c; b.setAttribute("aria-label","色 "+c);
+    b.setAttribute("aria-pressed", String(c === pickColor));
+    b.onclick = () => { pickColor = c; drawColors(); };
+    box.appendChild(b);
+  });
+}
+function readInviteFromHash(){
+  const h = location.hash.slice(1);
+  if (!h.startsWith("k=")) return null;
+  try { return decodeURIComponent(h.slice(2)); } catch { return null; }
+}
+$("setupForm").addEventListener("submit", async e => {
+  e.preventDefault();
+  const name = $("nameIn").value.trim(), pass = $("keyIn").value;
+  const err = $("setupErr");
+  if (!name){ err.textContent="呼び名を入れてください。"; err.hidden=false; return; }
+  if (pass.normalize("NFKC").trim().length < 8){ err.textContent="合言葉は8文字以上にしてください。"; err.hidden=false; return; }
+  err.hidden = true;
+  $("setupBtn").disabled = true; $("setupBtn").textContent = "準備しています…";
+  me = { name, color:pickColor, pass, room:"家族のトーク" };
+  store.set("ot.me", me);
+  history.replaceState(null, "", location.pathname + location.search);
+  await start();
+});
+
+/* ===== 描画 ===== */
+const fmtTime = ts => new Date(ts*1000).toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit"});
+const fmtDay = ts => new Date(ts*1000).toLocaleDateString("ja-JP",{month:"long",day:"numeric",weekday:"short"});
+function linkify(el, text){
+  const re = /https?:\/\/[^\s<>"']+/g; let last = 0, m;
+  while ((m = re.exec(text))){
+    el.append(text.slice(last, m.index));
+    const a = document.createElement("a"); a.href = m[0]; a.textContent = m[0]; a.target="_blank"; a.rel="noopener noreferrer";
+    el.append(a); last = m.index + m[0].length;
+  }
+  el.append(text.slice(last));
+}
+function render(){
+  const log = $("log"), atBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 80;
+  log.innerHTML = "";
+  if (!msgs.length){
+    const e = document.createElement("div"); e.className = "empty";
+    e.innerHTML = "まだメッセージはありません。<br>家族にも同じ合言葉を入れてもらうか、右上の設定から招待リンクを送りましょう。";
+    log.appendChild(e); return;
+  }
+  let lastDay = "", lastWho = "";
+  for (const m of msgs){
+    const d = fmtDay(m.ts);
+    if (d !== lastDay){ const t=document.createElement("div"); t.className="day"; t.textContent=d; log.appendChild(t); lastDay=d; lastWho=""; }
+    const row = document.createElement("div"); row.className = "row" + (m.mine ? " mine" : "");
+    const whoKey = m.dev + m.name;
+    if (!m.mine){
+      const av = document.createElement("div"); av.className="av"; av.style.background = m.color || "#5b6472";
+      av.textContent = [...(m.name||"?")][0]; av.style.visibility = whoKey===lastWho ? "hidden" : "visible";
+      row.appendChild(av);
+    }
+    const st = document.createElement("div"); st.className="stack";
+    if (!m.mine && whoKey !== lastWho){ const w=document.createElement("div"); w.className="who"; w.textContent=m.name; st.appendChild(w); }
+    const b = document.createElement("div"); b.className="bub";
+    if (m.type === "img"){ b.classList.add("img"); const im=new Image(); im.src=m.body; im.alt="写真"; im.loading="lazy"; im.onclick=()=>{ const w=window.open(); if(w){ w.document.body.style.margin="0"; const i=w.document.createElement("img"); i.src=m.body; i.style.maxWidth="100%"; w.document.body.appendChild(i);} }; b.appendChild(im); }
+    else if (m.type === "stamp"){ b.classList.add("stamp"); b.textContent = m.body; }
+    else linkify(b, m.body);
+    st.appendChild(b);
+    const meta = document.createElement("div"); meta.className="meta";
+    const tm = document.createElement("span"); tm.textContent = fmtTime(m.ts); meta.appendChild(tm);
+    if (m.mine){
+      const s = document.createElement("span");
+      if (m.ok === 0){ s.className="fail"; s.textContent="未送信・タップで再送"; s.style.cursor="pointer"; s.onclick=()=>resend(m); }
+      else if (m.ok == null) s.textContent = "送信中";
+      else s.textContent = "送信済み";
+      meta.appendChild(s);
+    }
+    st.appendChild(meta);
+    row.appendChild(st); log.appendChild(row);
+    lastWho = whoKey;
+  }
+  if (atBottom || render.force){ log.scrollTop = log.scrollHeight; render.force = false; }
+}
+function insert(m){
+  if (seen.has(m.id)) return false;
+  seen.add(m.id);
+  let i = msgs.length; while (i > 0 && msgs[i-1].ts > m.ts) i--;
+  msgs.splice(i, 0, m); return true;
+}
+
+/* ===== 通信 ===== */
+function status(n, total){
+  $("dot").classList.toggle("on", n > 0);
+  $("statusTx").textContent = n > 0 ? `つながっています` : "つながっていません";
+  $("statusTx").parentElement.title = `中継サーバー ${n}/${total} に接続`;
+}
+function connectedCount(){
+  try {
+    if (pool.listConnectionStatus) return [...pool.listConnectionStatus().values()].filter(Boolean).length;
+    if (pool.relays instanceof Map) return [...pool.relays.values()].filter(r => r && r.connected).length;
+  } catch {}
+  return null;
+}
+async function handleEvent(ev){
+  if (seen.has(ev.id)) return;
+  let p; try { p = await open(fam.key, ev.content); } catch { return; } // 合言葉が違う＝読めないので無視
+  if (!p || p.app !== APP) return;
+  const mine = ev.pubkey === devPk();
+  const m = { id:p.id || ev.id, ts:ev.created_at, name:String(p.n||"?").slice(0,16), color:p.c, type:p.t, body:String(p.b||""), dev:ev.pubkey.slice(0,8), mine, ok: mine ? 1 : undefined };
+  if (!["text","img","stamp"].includes(m.type)) return;
+  if (m.type === "img" && !m.body.startsWith("data:image/")) return;
+  if (insert(m)){
+    seen.add(ev.id); saveMsgs(); render();
+    if (!mine) notifyNew(m);
+  }
+}
+const devPk = () => NT.getPublicKey(unhex(devSk));
+
+function subscribe(){
+  if (sub) try { sub.close(); } catch {}
+  const lastTs = msgs.length ? msgs[msgs.length-1].ts : 0;
+  const since = Math.max(Math.floor(Date.now()/1000) - HISTORY_DAYS*86400, lastTs - 3600);
+  const token = subscribe.token = (subscribe.token || 0) + 1;
+  sub = pool.subscribeMany(RELAYS, [{ kinds:[KIND], "#t":[fam.tag], since }], {
+    onevent: ev => { handleEvent(ev); },
+    oneose: () => {},
+    // 全部の接続が切れたら少し待ってつなぎ直す
+    onclose: () => { if (token === subscribe.token) setTimeout(() => { if (token === subscribe.token) subscribe(); }, 5000); }
+  });
+}
+async function publish(payload){
+  const ev = NT.finalizeEvent({
+    kind: KIND, created_at: Math.floor(Date.now()/1000),
+    tags: [["d", payload.id], ["t", fam.tag]],
+    content: await seal(fam.key, payload)
+  }, unhex(devSk));
+  const results = await Promise.allSettled(pool.publish(RELAYS, ev));
+  const ok = results.filter(r => r.status === "fulfilled").length;
+  return { ok, ev };
+}
+async function send(type, body){
+  const id = rid();
+  const payload = { app:APP, id, n:me.name, c:me.color, t:type, b:body };
+  const m = { id, ts:Math.floor(Date.now()/1000), name:me.name, color:me.color, type, body, dev:devPk().slice(0,8), mine:true, ok:null, payload };
+  insert(m); render.force = true; render(); saveMsgs();
+  await deliver(m);
+}
+async function deliver(m){
+  try {
+    const { ok, ev } = await publish(m.payload);
+    seen.add(ev.id);
+    m.ok = ok > 0 ? 1 : 0;
+    if (ok > 0){ pushNotify(m.payload); delete m.payload; }
+  } catch { m.ok = 0; }
+  saveMsgs(); render();
+  if (m.ok === 0) toast("送れませんでした。Wi-Fiを確認して「再送」をタップしてください");
+}
+function resend(m){ if (!m.payload) return; m.ok = null; render(); deliver(m); }
+
+/* ===== 写真 ===== */
+async function shrink(file){
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await new Promise((res, rej) => { const i = new Image(); i.onload=()=>res(i); i.onerror=rej; i.src=url; });
+    for (const side of [960, 800, 640, 520, 420]){
+      const s = Math.min(1, side / Math.max(img.naturalWidth, img.naturalHeight));
+      const c = document.createElement("canvas");
+      c.width = Math.round(img.naturalWidth*s); c.height = Math.round(img.naturalHeight*s);
+      c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+      for (const q of [0.72, 0.6, 0.5, 0.4]){
+        const d = c.toDataURL("image/jpeg", q);
+        if (d.length <= IMG_MAX_BYTES) return d;
+      }
+    }
+    return null;
+  } finally { URL.revokeObjectURL(url); }
+}
+
+/* ===== 閉じていても届く通知（Web Push） ===== */
+const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+const isStandalone = matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+const pushSupported = () => !!PUSH_URL && "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+const pushOn = () => store.get("ot.push", null) != null;
+const pushBase = () => PUSH_URL.replace(/\/+$/, "");
+
+function idb(){
+  return new Promise((res, rej) => {
+    const r = indexedDB.open("ouchi-talk", 1);
+    r.onupgradeneeded = () => r.result.createObjectStore("kv");
+    r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+  });
+}
+async function idbSet(k, v){
+  const db = await idb();
+  return new Promise((res, rej) => { const t = db.transaction("kv","readwrite"); t.objectStore("kv").put(v, k); t.oncomplete = res; t.onerror = () => rej(t.error); });
+}
+async function idbDel(k){
+  const db = await idb();
+  return new Promise(res => { const t = db.transaction("kv","readwrite"); t.objectStore("kv").delete(k); t.oncomplete = res; t.onerror = res; });
+}
+async function api(path, body){
+  const r = await fetch(pushBase() + path, body ? { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body), keepalive:true } : {});
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || ("HTTP " + r.status));
+  return j;
+}
+let swReg = null;
+async function registerSW(){
+  if (!("serviceWorker" in navigator)) return null;
+  try { swReg = await navigator.serviceWorker.register("sw.js"); return swReg; } catch { return null; }
+}
+// この端末を「通知を受け取る端末」として登録する
+async function enablePush(){
+  if (!PUSH_URL){ toast("通知の中継先がまだ設定されていません（README参照）"); return; }
+  if (isIOS && !isStandalone){ toast("iPhoneでは、ホーム画面に追加したアイコンから開いて設定してください"); return; }
+  if (!pushSupported()){ toast("この端末のブラウザは、閉じているときの通知に対応していません"); return; }
+  const perm = await Notification.requestPermission();
+  if (perm !== "granted"){ toast("通知が許可されませんでした。端末の設定から変更できます"); drawPushState(); return; }
+  try {
+    $("pushBtn").disabled = true; $("pushBtn").textContent = "設定しています…";
+    const reg = swReg || await registerSW(); await navigator.serviceWorker.ready;
+    const { key } = await api("/vapid");
+    const vapid = unb64url(key);
+    let sub = await reg.pushManager.getSubscription();
+    if (sub && !sameKey(sub.options && sub.options.applicationServerKey, vapid)){ await sub.unsubscribe(); sub = null; }
+    if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly:true, applicationServerKey:vapid });
+    await idbSet("push", { key:fam.key, room:fam.push, dev:devPk().slice(0,16), url:pushBase(), vapid });
+    await api("/subscribe", { room:fam.push, dev:devPk().slice(0,16), sub:sub.toJSON() });
+    store.set("ot.push", sub.endpoint);
+    toast("通知をオンにしました。アプリを閉じていても届きます");
+  } catch (e) {
+    toast("通知を設定できませんでした（" + e.message + "）");
+  }
+  drawPushState();
+}
+async function disablePush(){
+  try {
+    const reg = swReg || (navigator.serviceWorker && await navigator.serviceWorker.getRegistration());
+    const sub = reg && await reg.pushManager.getSubscription();
+    if (sub){ api("/unsubscribe", { room:fam.push, endpoint:sub.endpoint }).catch(()=>{}); await sub.unsubscribe(); }
+  } catch {}
+  await idbDel("push").catch(()=>{});
+  store.del("ot.push");
+  drawPushState();
+}
+// 起動時：宛先が自動で変わっていたら登録し直す
+async function refreshPush(){
+  if (!pushOn() || !pushSupported() || Notification.permission !== "granted") return;
+  try {
+    const reg = swReg || await registerSW(); if (!reg) return;
+    await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.getSubscription();
+    if (!sub){ store.del("ot.push"); return; }
+    if (sub.endpoint !== store.get("ot.push", "")){
+      await api("/subscribe", { room:fam.push, dev:devPk().slice(0,16), sub:sub.toJSON() });
+      store.set("ot.push", sub.endpoint);
+    }
+  } catch {}
+}
+// 自分が送ったあと、ほかの家族に「新着」を知らせてもらう。中身は合言葉で暗号化して渡す。
+async function pushNotify(p){
+  if (!PUSH_URL || !p) return;
+  try {
+    const preview = { app:APP, n:p.n, t:p.t, b: p.t === "img" ? "" : String(p.b).slice(0, 100) };
+    await api("/notify", { room:fam.push, dev:devPk().slice(0,16), p: await seal(fam.key, preview) });
+  } catch {}
+}
+function unb64url(s){ s = s.replace(/-/g,"+").replace(/_/g,"/"); while (s.length % 4) s += "="; return unb64(s); }
+function sameKey(a, b){
+  if (!a) return false; const u = new Uint8Array(a);
+  return u.length === b.length && u.every((x,i) => x === b[i]);
+}
+function drawPushState(){
+  const btn = $("pushBtn"), note = $("pushNote");
+  btn.disabled = false;
+  if (!PUSH_URL){ $("pushField").hidden = true; $("notifyField").hidden = false; return; }
+  $("pushField").hidden = false; $("notifyField").hidden = true;
+  $("pushOff").hidden = !pushOn();
+  if (isIOS && !isStandalone){
+    btn.hidden = true;
+    note.textContent = "iPhoneでは、Safariの共有ボタン →「ホーム画面に追加」をして、そのアイコンから開くと設定できます（iOS 16.4以降）。";
+  } else if (!pushSupported()){
+    btn.hidden = true; note.textContent = "このブラウザは、閉じているときの通知に対応していません。";
+  } else if (pushOn() && Notification.permission === "granted"){
+    btn.hidden = true; note.textContent = "オンです。アプリを閉じていても、家族からのメッセージを通知します。";
+  } else {
+    btn.hidden = false; btn.textContent = "通知をオンにする";
+    note.textContent = "アプリを閉じていても、家族からのメッセージを通知します。";
+  }
+}
+async function clearShownNotifications(){
+  try {
+    const reg = swReg || (navigator.serviceWorker && await navigator.serviceWorker.getRegistration());
+    if (reg) (await reg.getNotifications({ tag:"ouchi-talk" })).forEach(n => n.close());
+    if (navigator.clearAppBadge) navigator.clearAppBadge();
+  } catch {}
+}
+
+/* ===== 通知（開いている間） ===== */
+function notifyNew(m){
+  if (!document.hidden) return;
+  unread++; document.title = `(${unread}) おうちトーク`;
+  if (pushOn()) return; // 閉じていても届く通知が有効なら、そちらに任せる（二重にしない）
+  try {
+    if ("Notification" in window && Notification.permission === "granted"){
+      const body = m.type === "img" ? "写真が届きました" : m.type === "stamp" ? m.body : m.body.slice(0, 80);
+      new Notification(m.name, { body, tag: "ouchi-talk", icon: "icon-180.png" });
+    }
+  } catch {}
+}
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden){ unread = 0; document.title = "おうちトーク"; clearShownNotifications(); if (pool) subscribe(); }
+});
+
+/* ===== 画面の操作 ===== */
+const msgIn = $("msgIn");
+function autosize(){ msgIn.style.height = "auto"; msgIn.style.height = Math.min(msgIn.scrollHeight, 120) + "px"; $("sendBtn").disabled = !msgIn.value.trim(); }
+msgIn.addEventListener("input", autosize);
+msgIn.addEventListener("keydown", e => {
+  // パソコンでは Enter で送信、Shift+Enter で改行。スマホは改行キーのまま。
+  if (e.key === "Enter" && !e.shiftKey && !e.isComposing && matchMedia("(pointer:fine)").matches){ e.preventDefault(); $("compose").requestSubmit(); }
+});
+$("compose").addEventListener("submit", e => {
+  e.preventDefault();
+  const t = msgIn.value.trim(); if (!t) return;
+  if (enc.encode(t).length > 6000){ toast("長すぎます。少し分けて送ってください"); return; }
+  msgIn.value = ""; autosize(); send("text", t);
+});
+$("stampBtn").onclick = () => { $("stamps").hidden = !$("stamps").hidden; };
+STAMPS.forEach(s => { const b=document.createElement("button"); b.type="button"; b.textContent=s; b.onclick=()=>{ send("stamp", s); $("stamps").hidden = true; }; $("stamps").appendChild(b); });
+$("photoBtn").onclick = () => $("photoIn").click();
+$("photoIn").onchange = async () => {
+  const f = $("photoIn").files[0]; $("photoIn").value = "";
+  if (!f) return;
+  toast("写真を小さくしています…");
+  try { const d = await shrink(f); if (!d){ toast("この写真は送れませんでした"); return; } send("img", d); }
+  catch { toast("この写真は読み込めませんでした"); }
+};
+
+// 設定シート
+$("menuBtn").onclick = () => {
+  $("nameEdit").value = me.name; $("roomEdit").value = me.room || "家族のトーク";
+  $("resetOk").hidden = true;
+  $("notifyBtn").textContent = ("Notification" in window && Notification.permission === "granted") ? "通知はオンです" : "通知をオンにする";
+  drawPushState();
+  $("sheet").hidden = false;
+};
+$("pushBtn").onclick = enablePush;
+$("pushOff").onclick = async () => { await disablePush(); toast("この端末の通知をやめました"); };
+$("sheet").addEventListener("click", e => { if (e.target === $("sheet")) $("sheetClose").click(); });
+$("sheetClose").onclick = () => {
+  const n = $("nameEdit").value.trim(); if (n) me.name = n;
+  me.room = $("roomEdit").value.trim() || "家族のトーク";
+  store.set("ot.me", me); $("title").textContent = me.room; $("sheet").hidden = true;
+};
+$("copyInvite").onclick = async () => {
+  const link = location.origin + location.pathname + "#k=" + encodeURIComponent(me.pass);
+  try { await navigator.clipboard.writeText(link); toast("招待リンクをコピーしました"); }
+  catch { prompt("このリンクを家族に送ってください", link); }
+};
+$("notifyBtn").onclick = async () => {
+  if (!("Notification" in window)){ toast("この端末のブラウザは通知に対応していません。ホーム画面に追加すると使える場合があります"); return; }
+  const r = await Notification.requestPermission();
+  $("notifyBtn").textContent = r === "granted" ? "通知はオンです" : "通知をオンにする";
+  if (r !== "granted") toast("通知が許可されませんでした。端末の設定から変更できます");
+};
+$("resetBtn").onclick = () => { $("resetOk").hidden = false; };
+$("resetOk").onclick = async () => {
+  if (pushOn()) await disablePush();
+  ["ot.me","ot.msgs","ot.sk","ot.push"].forEach(store.del); location.reload();
+};
+
+/* ===== 起動 ===== */
+async function start(){
+  if (!NT){ $("setup").hidden = false; const e=$("setupErr"); e.textContent="部品を読み込めませんでした。インターネットにつながっているか確認して、ページを開き直してください。"; e.hidden=false; $("setupBtn").disabled=false; $("setupBtn").textContent="はじめる"; return; }
+  if (!devSk){ devSk = hex(NT.generateSecretKey()); store.set("ot.sk", devSk); }
+  fam = await deriveFamily(me.pass);
+  $("setup").hidden = true; $("app").hidden = false;
+  $("title").textContent = me.room || "家族のトーク";
+  render.force = true; render();
+  pool = new NT.SimplePool();
+  subscribe();
+  registerSW().then(() => { refreshPush(); clearShownNotifications(); });
+  // 通知が使えるのにまだオフなら、一度だけ案内する
+  if (PUSH_URL && !pushOn() && !store.get("ot.pushHint", false) && (pushSupported() || isIOS)){
+    store.set("ot.pushHint", true);
+    setTimeout(() => toast("右上の設定から、閉じていても届く通知をオンにできます"), 1500);
+  }
+  // 未送信のまま閉じたものは再送
+  msgs.filter(m => m.mine && m.ok !== 1 && m.payload).forEach(m => deliver(m));
+  const tick = () => { const n = connectedCount(); status(n == null ? 1 : n, RELAYS.length); };
+  setTimeout(tick, 2500); setInterval(tick, 8000);
+  window.addEventListener("online", () => { subscribe(); toast("つながりました"); });
+  window.addEventListener("offline", () => status(0, RELAYS.length));
+}
+
+const invite = readInviteFromHash();
+if (me && invite && invite !== me.pass){ /* 別の家族の招待リンク：今の設定を優先 */ history.replaceState(null,"",location.pathname); }
+if (me) start();
+else {
+  drawColors();
+  if (invite){ $("keyIn").value = invite; $("keyIn").type = "password"; }
+  $("setup").hidden = false;
+}
+})();
+</script>
+</body>
+</html>
