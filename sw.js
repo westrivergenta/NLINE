@@ -59,7 +59,6 @@ async function onPush(e) {
     renotify: !watching,
     silent: watching,
     icon: "icon-192.png",
-    badge: "icon-192.png",
     data: { url: self.registration.scope }
   });
   if (watching) {

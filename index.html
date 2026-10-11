@@ -11,7 +11,7 @@
 <meta name="apple-mobile-web-app-title" content="おうちトーク">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="icon" href="icon-64.png" type="image/png">
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@400;500;700&display=swap">
@@ -40,7 +40,8 @@ button{cursor:pointer}
 .setup{min-height:100%;display:grid;place-items:center;padding:24px 16px calc(24px + env(safe-area-inset-bottom,0px))}
 .card{width:100%;max-width:420px;background:var(--surface);border:1px solid var(--line);border-radius:20px;padding:28px 22px;display:grid;gap:18px}
 .brand{display:flex;align-items:center;gap:12px}
-.brand svg{width:48px;height:48px;flex:none}
+.logo{width:52px;height:52px;flex:none;border-radius:14px;object-fit:cover}
+.logo.sm{width:32px;height:32px;border-radius:9px}
 .brand h1{margin:0;font-size:1.5rem;font-weight:700;letter-spacing:.02em}
 .brand p{margin:2px 0 0;color:var(--muted);font-size:.85rem}
 .field{display:grid;gap:6px}
@@ -81,6 +82,7 @@ button{cursor:pointer}
 .bub a{color:inherit}
 .meta{font-size:.68rem;color:var(--muted);font-variant-numeric:tabular-nums;display:flex;gap:6px}
 .meta .fail{color:var(--warn)}
+.meta .read{color:var(--accent);font-weight:500}
 .empty{margin:auto;text-align:center;color:var(--muted);font-size:.9rem;line-height:1.7;max-width:280px}
 
 .stamps{display:flex;gap:6px;overflow-x:auto;padding:8px 12px;background:var(--surface);border-top:1px solid var(--line)}
@@ -96,21 +98,19 @@ button{cursor:pointer}
 .sheet h3{margin:0;font-size:1.1rem}
 .kv{display:flex;gap:8px;flex-wrap:wrap}
 .danger{color:var(--warn);border-color:var(--warn)}
+.ver{margin:0;text-align:center;color:var(--muted);font-size:.72rem}
 .toast{position:fixed;left:50%;bottom:calc(90px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:9px 16px;border-radius:99px;font-size:.85rem;z-index:20;max-width:calc(100% - 32px)}
 @media (prefers-reduced-motion:no-preference){.row{animation:pop .18s ease-out}@keyframes pop{from{transform:translateY(6px);opacity:.4}}}
 </style>
 </head>
 <body>
 
-<svg width="0" height="0" style="position:absolute" aria-hidden="true">
-  <symbol id="logo" viewBox="0 0 48 48"><rect width="48" height="48" rx="13" fill="#3a47a3"/><path d="M11 23.5 24 13l13 10.5V35a2 2 0 0 1-2 2H13a2 2 0 0 1-2-2z" fill="#fff"/><path d="M18 26.5h12M18 31h8" stroke="#3a47a3" stroke-width="2.6" stroke-linecap="round"/></symbol>
-</svg>
 
 <!-- はじめての設定 -->
 <section class="setup" id="setup" hidden>
   <form class="card" id="setupForm" autocomplete="off">
     <div class="brand">
-      <svg><use href="#logo"/></svg>
+      <img class="logo" src="icon-192.png" alt="">
       <div><h1>おうちトーク</h1><p>登録なし・無料の家族チャット</p></div>
     </div>
     <div class="field">
@@ -134,7 +134,7 @@ button{cursor:pointer}
 <!-- トーク画面 -->
 <section class="app" id="app" hidden>
   <header class="bar">
-    <svg width="30" height="30" aria-hidden="true"><use href="#logo"/></svg>
+    <img class="logo sm" src="icon-192.png" alt="">
     <h2 id="title">家族のトーク</h2>
     <span class="status" title="中継サーバーへの接続数"><span class="dot" id="dot"></span><span id="statusTx">接続中…</span></span>
     <button class="iconbtn" id="menuBtn" aria-label="設定">
@@ -191,6 +191,7 @@ button{cursor:pointer}
       <div class="kv"><button class="ghost danger" id="resetBtn">リセット</button><button class="ghost danger" id="resetOk" hidden>本当に消す</button></div>
     </div>
     <button class="primary" id="sheetClose">保存して閉じる</button>
+    <p class="ver" id="verTx"></p>
   </div>
 </div>
 
@@ -219,7 +220,8 @@ const IMG_MAX_BYTES = 48000; // 写真1枚の上限（中継サーバーの制�
 const COLORS = ["#e0584b","#e8963a","#2f9a63","#2b8ac6","#6a5acd","#c4508f","#5b6472"];
 // 閉じていても届く通知の中継先（Cloudflare Workerの URL）。空のままなら、開いている間だけの通知になります。
 // 例）const PUSH_URL = "https://ouchi-push.yourname.workers.dev";
-const PUSH_URL = "";
+const PUSH_URL = "https://ouchi-push.westrivergenta.workers.dev";
+const APP_VERSION = "1.3（既読・閉じても届く通知）";
 const STAMPS = ["👍","😊","😂","🙏","❤️","👌","🎉","😢","🍚","🏠","🚃","💤","⭕","❌","OK"];
 
 /* ===== 小道具 ===== */
@@ -270,6 +272,7 @@ let msgs = store.get("ot.msgs", []);       // [{id,ts,name,color,type,body,dev,m
 const seen = new Set(msgs.map(m => m.id));
 let devSk = store.get("ot.sk", null);      // 端末ごとの署名鍵（自動生成。アカウントではない）
 let pool = null, sub = null, unread = 0;
+let reads = store.get("ot.reads", {});      // 端末ごとの「どこまで読んだか」 {公開鍵: {n:名前, u:既読の時刻}}
 const NT = window.NostrTools;
 
 function saveMsgs(){ if (msgs.length > MAX_LOCAL) msgs = msgs.slice(-MAX_LOCAL); store.set("ot.msgs", msgs); }
@@ -349,7 +352,7 @@ function render(){
       const s = document.createElement("span");
       if (m.ok === 0){ s.className="fail"; s.textContent="未送信・タップで再送"; s.style.cursor="pointer"; s.onclick=()=>resend(m); }
       else if (m.ok == null) s.textContent = "送信中";
-      else s.textContent = "送信済み";
+      else { const r = readCount(m); s.textContent = r > 0 ? `既読 ${r}` : "送信済み"; if (r > 0) s.className = "read"; }
       meta.appendChild(s);
     }
     st.appendChild(meta);
@@ -366,9 +369,11 @@ function insert(m){
 }
 
 /* ===== 通信 ===== */
+let everConnected = false;
 function status(n, total){
+  if (n > 0) everConnected = true;
   $("dot").classList.toggle("on", n > 0);
-  $("statusTx").textContent = n > 0 ? `つながっています` : "つながっていません";
+  $("statusTx").textContent = n > 0 ? "つながっています" : everConnected ? "つながっていません" : "接続中…";
   $("statusTx").parentElement.title = `中継サーバー ${n}/${total} に接続`;
 }
 function connectedCount(){
@@ -383,13 +388,48 @@ async function handleEvent(ev){
   let p; try { p = await open(fam.key, ev.content); } catch { return; } // 合言葉が違う＝読めないので無視
   if (!p || p.app !== APP) return;
   const mine = ev.pubkey === devPk();
+  if (p.t === "read"){                       // 既読のお知らせ
+    seen.add(ev.id);
+    if (mine) return;
+    const u = Number(p.u) || 0, cur = reads[ev.pubkey];
+    if (!cur || cur.u < u){ reads[ev.pubkey] = { n:String(p.n||"?").slice(0,16), u }; store.set("ot.reads", reads); render(); }
+    return;
+  }
   const m = { id:p.id || ev.id, ts:ev.created_at, name:String(p.n||"?").slice(0,16), color:p.c, type:p.t, body:String(p.b||""), dev:ev.pubkey.slice(0,8), mine, ok: mine ? 1 : undefined };
   if (!["text","img","stamp"].includes(m.type)) return;
   if (m.type === "img" && !m.body.startsWith("data:image/")) return;
   if (insert(m)){
     seen.add(ev.id); saveMsgs(); render();
-    if (!mine) notifyNew(m);
+    if (!mine){ notifyNew(m); scheduleRead(); }
   }
+}
+
+/* ===== 既読 ===== */
+// 自分のメッセージを読んだ人数（自分と同じ呼び名の端末は数えない。同じ人の2台目も1人として数える）
+function readCount(m){
+  const who = new Set();
+  for (const r of Object.values(reads)) if (r.u >= m.ts && r.n !== me.name) who.add(r.n);
+  return who.size;
+}
+// 画面を見ているときに「ここまで読んだ」を家族に知らせる（端末ごとに最新の1件だけが残る）
+function scheduleRead(){
+  clearTimeout(scheduleRead.t);
+  scheduleRead.t = setTimeout(sendRead, 1500);
+}
+async function sendRead(){
+  if (document.hidden || !pool || !fam) return;
+  let upTo = 0; for (const m of msgs) if (!m.mine && m.ts > upTo) upTo = m.ts;
+  if (!upTo || upTo <= store.get("ot.readSent", 0)) return;
+  try {
+    const ev = NT.finalizeEvent({
+      kind: KIND, created_at: Math.floor(Date.now()/1000),
+      tags: [["d", "read"], ["t", fam.tag]],
+      content: await seal(fam.key, { app:APP, id:"read", n:me.name, t:"read", u:upTo })
+    }, unhex(devSk));
+    seen.add(ev.id);
+    const r = await Promise.allSettled(pool.publish(RELAYS, ev));
+    if (r.some(x => x.status === "fulfilled")) store.set("ot.readSent", upTo);
+  } catch {}
 }
 const devPk = () => NT.getPublicKey(unhex(devSk));
 
@@ -400,7 +440,7 @@ function subscribe(){
   const token = subscribe.token = (subscribe.token || 0) + 1;
   sub = pool.subscribeMany(RELAYS, [{ kinds:[KIND], "#t":[fam.tag], since }], {
     onevent: ev => { handleEvent(ev); },
-    oneose: () => {},
+    oneose: () => { scheduleRead(); },
     // 全部の接続が切れたら少し待ってつなぎ直す
     onclose: () => { if (token === subscribe.token) setTimeout(() => { if (token === subscribe.token) subscribe(); }, 5000); }
   });
@@ -586,7 +626,7 @@ function notifyNew(m){
   } catch {}
 }
 document.addEventListener("visibilitychange", () => {
-  if (!document.hidden){ unread = 0; document.title = "おうちトーク"; clearShownNotifications(); if (pool) subscribe(); }
+  if (!document.hidden){ unread = 0; document.title = "おうちトーク"; clearShownNotifications(); if (pool){ subscribe(); scheduleRead(); } }
 });
 
 /* ===== 画面の操作 ===== */
@@ -620,6 +660,7 @@ $("menuBtn").onclick = () => {
   $("resetOk").hidden = true;
   $("notifyBtn").textContent = ("Notification" in window && Notification.permission === "granted") ? "通知はオンです" : "通知をオンにする";
   drawPushState();
+  $("verTx").textContent = "バージョン " + APP_VERSION;
   $("sheet").hidden = false;
 };
 $("pushBtn").onclick = enablePush;
@@ -644,7 +685,7 @@ $("notifyBtn").onclick = async () => {
 $("resetBtn").onclick = () => { $("resetOk").hidden = false; };
 $("resetOk").onclick = async () => {
   if (pushOn()) await disablePush();
-  ["ot.me","ot.msgs","ot.sk","ot.push"].forEach(store.del); location.reload();
+  ["ot.me","ot.msgs","ot.sk","ot.push","ot.reads","ot.readSent"].forEach(store.del); location.reload();
 };
 
 /* ===== 起動 ===== */
@@ -666,7 +707,7 @@ async function start(){
   // 未送信のまま閉じたものは再送
   msgs.filter(m => m.mine && m.ok !== 1 && m.payload).forEach(m => deliver(m));
   const tick = () => { const n = connectedCount(); status(n == null ? 1 : n, RELAYS.length); };
-  setTimeout(tick, 2500); setInterval(tick, 8000);
+  setTimeout(tick, 800); setInterval(tick, 3000);
   window.addEventListener("online", () => { subscribe(); toast("つながりました"); });
   window.addEventListener("offline", () => status(0, RELAYS.length));
 }
