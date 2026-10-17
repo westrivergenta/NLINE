@@ -82,7 +82,8 @@ button{cursor:pointer}
 .bub a{color:inherit}
 .meta{font-size:.68rem;color:var(--muted);font-variant-numeric:tabular-nums;display:flex;gap:6px}
 .meta .fail{color:var(--warn)}
-.meta .read{color:var(--accent);font-weight:500}
+.meta .read{color:var(--accent);font-weight:500;display:inline-flex;align-items:center;gap:3px;cursor:pointer}
+.rav{width:16px;height:16px;border-radius:50%;display:inline-grid;place-items:center;color:#fff;font-size:.6rem;font-weight:700;line-height:1;box-shadow:0 0 0 1.5px var(--bg)}
 .empty{margin:auto;text-align:center;color:var(--muted);font-size:.9rem;line-height:1.7;max-width:280px}
 
 .stamps{display:flex;gap:6px;overflow-x:auto;padding:8px 12px;background:var(--surface);border-top:1px solid var(--line)}
@@ -226,7 +227,7 @@ const COLORS = ["#e0584b","#e8963a","#2f9a63","#2b8ac6","#6a5acd","#c4508f","#5b
 // 閉じていても届く通知の中継先（Cloudflare Workerの URL）。空のままなら、開いている間だけの通知になります。
 // 例）const PUSH_URL = "https://ouchi-push.yourname.workers.dev";
 const PUSH_URL = "https://ouchi-push.westrivergenta.workers.dev";
-const APP_VERSION = "1.4（アイコンの色を変更できるように）";
+const APP_VERSION = "1.5（既読アイコン・通知を早く・最新から表示）";
 const STAMPS = ["👍","😊","😂","🙏","❤️","👌","🎉","😢","🍚","🏠","🚃","💤","⭕","❌","OK"];
 
 /* ===== 小道具 ===== */
@@ -327,8 +328,12 @@ function linkify(el, text){
   }
   el.append(text.slice(last));
 }
+// 一番下を見ている間は、新着・写真の読み込み・画面サイズの変化があっても一番下に張り付ける
+let stickBottom = true;
+function toBottom(){ const log = $("log"); log.scrollTop = log.scrollHeight; }
+function toBottomSoon(){ toBottom(); requestAnimationFrame(toBottom); setTimeout(toBottom, 250); setTimeout(toBottom, 1000); }
 function render(){
-  const log = $("log"), atBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 80;
+  const log = $("log"), atBottom = stickBottom, prevTop = log.scrollTop;
   log.innerHTML = "";
   if (!msgs.length){
     const e = document.createElement("div"); e.className = "empty";
@@ -356,7 +361,7 @@ function render(){
     const st = document.createElement("div"); st.className="stack";
     if (!m.mine && whoKey !== lastWho){ const w=document.createElement("div"); w.className="who"; w.textContent=m.name; st.appendChild(w); }
     const b = document.createElement("div"); b.className="bub";
-    if (m.type === "img"){ b.classList.add("img"); const im=new Image(); im.src=m.body; im.alt="写真"; im.loading="lazy"; im.onclick=()=>{ const w=window.open(); if(w){ w.document.body.style.margin="0"; const i=w.document.createElement("img"); i.src=m.body; i.style.maxWidth="100%"; w.document.body.appendChild(i);} }; b.appendChild(im); }
+    if (m.type === "img"){ b.classList.add("img"); const im=new Image(); im.src=m.body; im.alt="写真"; im.onload=()=>{ if (stickBottom) toBottom(); }; im.onclick=()=>{ const w=window.open(); if(w){ w.document.body.style.margin="0"; const i=w.document.createElement("img"); i.src=m.body; i.style.maxWidth="100%"; w.document.body.appendChild(i);} }; b.appendChild(im); }
     else if (m.type === "stamp"){ b.classList.add("stamp"); b.textContent = m.body; }
     else linkify(b, m.body);
     st.appendChild(b);
@@ -366,14 +371,29 @@ function render(){
       const s = document.createElement("span");
       if (m.ok === 0){ s.className="fail"; s.textContent="未送信・タップで再送"; s.style.cursor="pointer"; s.onclick=()=>resend(m); }
       else if (m.ok == null) s.textContent = "送信中";
-      else { const r = readCount(m); s.textContent = r > 0 ? `既読 ${r}` : "送信済み"; if (r > 0) s.className = "read"; }
+      else {
+        const rs = readersOf(m, colorNow);
+        if (!rs.length) s.textContent = "送信済み";
+        else {
+          s.className = "read"; s.textContent = "既読";
+          const who = rs.map(r => r.n).join("、");
+          s.title = "既読：" + who; s.setAttribute("role","button"); s.tabIndex = 0;
+          s.onclick = () => toast("既読：" + who);
+          for (const r of rs){
+            const a = document.createElement("span"); a.className = "rav";
+            a.style.background = r.c; a.textContent = [...r.n][0] || "?";
+            s.appendChild(a);
+          }
+        }
+      }
       meta.appendChild(s);
     }
     st.appendChild(meta);
     row.appendChild(st); log.appendChild(row);
     lastWho = whoKey;
   }
-  if (atBottom || render.force){ log.scrollTop = log.scrollHeight; render.force = false; }
+  if (atBottom || render.force){ stickBottom = true; toBottom(); render.force = false; }
+  else log.scrollTop = prevTop; // 上の方を読んでいる人の位置はそのまま
 }
 function insert(m){
   if (seen.has(m.id)) return false;
@@ -423,10 +443,14 @@ async function handleEvent(ev){
 
 /* ===== 既読 ===== */
 // 自分のメッセージを読んだ人数（自分と同じ呼び名の端末は数えない。同じ人の2台目も1人として数える）
-function readCount(m){
-  const who = new Set();
-  for (const r of Object.values(reads)) if (r.u >= m.ts && r.n !== me.name) who.add(r.n);
-  return who.size;
+function readersOf(m, colorNow = {}){
+  const who = new Map();
+  for (const [pk, r] of Object.entries(reads)){
+    if (r.u < m.ts || r.n === me.name || who.has(r.n)) continue;
+    const c = isColor(r.c) ? r.c : (colorNow[pk.slice(0,8)] && colorNow[pk.slice(0,8)].c) || "#5b6472";
+    who.set(r.n, { n:r.n, c });
+  }
+  return [...who.values()];
 }
 // 画面を見ているときに「ここまで読んだ」を家族に知らせる（端末ごとに最新の1件だけが残る）
 function scheduleRead(){
@@ -469,11 +493,12 @@ async function publish(payload){
     tags: [["d", payload.id], ["t", fam.tag]],
     content: await seal(fam.key, payload)
   }, unhex(devSk));
-  const results = await Promise.allSettled(pool.publish(RELAYS, ev));
-  const ok = results.filter(r => r.status === "fulfilled").length;
-  return { ok, ev };
+  // どれか1つの中継サーバーに届いた時点で「送信済み」にする（遅いサーバーを待たない）
+  const first = await Promise.any(pool.publish(RELAYS, ev)).then(() => 1, () => 0);
+  return { ok:first, ev };
 }
 async function send(type, body){
+  stickBottom = true;
   const id = rid();
   const payload = { app:APP, id, n:me.name, c:me.color, t:type, b:body };
   const m = { id, ts:Math.floor(Date.now()/1000), name:me.name, color:me.color, type, body, dev:devPk().slice(0,8), mine:true, ok:null, payload };
@@ -644,7 +669,7 @@ function notifyNew(m){
   } catch {}
 }
 document.addEventListener("visibilitychange", () => {
-  if (!document.hidden){ unread = 0; document.title = "おうちトーク"; clearShownNotifications(); if (pool){ subscribe(); scheduleRead(); } }
+  if (!document.hidden){ unread = 0; document.title = "おうちトーク"; stickBottom = true; toBottomSoon(); clearShownNotifications(); if (pool){ subscribe(); scheduleRead(); } }
 });
 
 /* ===== 画面の操作 ===== */
@@ -718,7 +743,13 @@ async function start(){
   fam = await deriveFamily(me.pass);
   $("setup").hidden = true; $("app").hidden = false;
   $("title").textContent = me.room || "家族のトーク";
-  render.force = true; render();
+  render.force = true; render(); toBottomSoon();
+  // 自分で上にスクロールしたときだけ張り付きを外す
+  $("log").addEventListener("scroll", () => {
+    const l = $("log"); stickBottom = l.scrollHeight - l.scrollTop - l.clientHeight < 80;
+  }, { passive:true });
+  if ("ResizeObserver" in window) new ResizeObserver(() => { if (stickBottom) toBottom(); }).observe($("log"));
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { if (stickBottom) toBottom(); });
   pool = new NT.SimplePool();
   subscribe();
   registerSW().then(() => { refreshPush(); clearShownNotifications(); });
